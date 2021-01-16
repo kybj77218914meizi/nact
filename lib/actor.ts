@@ -1,3 +1,7 @@
+import Denque from "denque";
+import { clearImmediate, setImmediate } from "./immediate";
+import { ActorPath } from "./paths";
+import { ActorSystem } from "./system";
 
 const { Deferral } = require('./deferral');
 const systemMap = require('./system-map');
@@ -7,10 +11,32 @@ const assert = require('assert');
 const { stop } = require('./functions');
 const { defaultSupervisionPolicy, SupervisionActions } = require('./supervision');
 
-const unit = x => {};
+const unit = () => { };
 
-class Actor {
-  constructor (parent, name, system, f, { shutdownAfter, onCrash, initialState, initialStateFunc, afterStop } = {}) {
+export class Actor {
+  parent: ActorSystem | Actor;
+  name: string;
+  path: ActorPath;
+  system: ActorSystem;
+  afterStop: any;
+  reference: any;
+  log: any;
+  f: any;
+  stopped: boolean;
+  children: Map<string, Actor>;
+  childReferences: Map<any, any>;
+  busy: boolean;
+  mailbox: Denque<any>;
+  immediate: undefined;
+  onCrash: any;
+  initialState: any;
+  initialStateFunc: any;
+  shutdownPeriod?: number;
+  state: any;
+  timeout?: number;
+  setTimeout: () => void;
+
+  constructor(parent: Actor | ActorSystem, name: string, system: ActorSystem, f, { shutdownAfter, onCrash, initialState, initialStateFunc, afterStop }: {} = {}) {
     this.parent = parent;
     if (!name) {
       name = `anonymous-${Math.abs(Math.random() * Number.MAX_SAFE_INTEGER) | 0}`;
@@ -21,7 +47,7 @@ class Actor {
     this.name = name;
     this.path = parent.path.createChildPath(this.name);
     this.system = system;
-    this.afterStop = afterStop || (() => {});
+    this.afterStop = afterStop || (() => { });
     this.reference = new ActorReference(this.system.name, this.parent.reference, this.path, this.name);
     this.log = this.system.createLogger(this.reference);
     this.f = f;
@@ -40,6 +66,10 @@ class Actor {
         throw new Error('Shutdown should be specified as a number in milliseconds');
       }
       this.shutdownPeriod = Actor.getSafeTimeout(shutdownAfter);
+
+      this.setTimeout = () => {
+        this.timeout = setTimeout(() => this.stop(), this.shutdownPeriod);
+      }
     } else {
       this.setTimeout = unit;
     }
@@ -47,7 +77,7 @@ class Actor {
     this.setTimeout();
   }
 
-  initializeState () {
+  initializeState() {
     if (this.initialStateFunc) {
       try {
         this.state = this.initialStateFunc(this.createContext(undefined));
@@ -59,34 +89,31 @@ class Actor {
     }
   }
 
-  setTimeout () {
-    this.timeout = setTimeout(() => this.stop(), this.shutdownPeriod);
-  }
 
-  reset () {
+  reset() {
     [...this.children.values()].forEach(x => x.stop());
     this.initializeState();
     this.resume();
   }
 
-  clearTimeout () {
+  clearTimeout() {
     clearTimeout(this.timeout);
   }
 
-  clearImmediate () {
+  clearImmediate() {
     clearImmediate(this.immediate);
   }
 
-  static getSafeTimeout (timeoutDuration) {
+  static getSafeTimeout(timeoutDuration: number) {
     timeoutDuration = timeoutDuration | 0;
     const MAX_TIMEOUT = 2147483647;
     return Math.min(MAX_TIMEOUT, timeoutDuration);
   }
 
-  assertNotStopped () { assert(!this.stopped); return true; }
-  afterMessage () { }
+  assertNotStopped() { assert(!this.stopped); return true; }
+  afterMessage() { }
 
-  dispatch (message, sender = new Nobody()) {
+  dispatch(message, sender = new Nobody()) {
     this.assertNotStopped();
     this.clearTimeout();
     if (!this.busy) {
@@ -96,7 +123,7 @@ class Actor {
     }
   }
 
-  query (message, timeout) {
+  query(message: any, timeout: number) {
     this.assertNotStopped();
     assert(timeout !== undefined && timeout !== null);
     const deferred = new Deferral();
@@ -119,43 +146,43 @@ class Actor {
     return deferred.promise;
   }
 
-  childStopped (child) {
+  childStopped(child: Actor) {
     this.children.delete(child.name);
     this.childReferences.delete(child.name);
   }
 
-  childSpawned (child) {
+  childSpawned(child: Actor) {
     this.children.set(child.name, child);
     this.childReferences.set(child.name, child.reference);
   }
 
-  stop () {
+  stop() {
     const context = this.createContextWithMailbox(this);
 
     this.clearImmediate();
     this.clearTimeout();
     this.parent && this.parent.childStopped(this);
-    delete this.parent;
+    delete (this as any).parent;
     [...this.children.values()].forEach(stop);
     this.stopped = true;
 
     setImmediate(() => this.afterStop(this.state, context));
   }
 
-  processNext () {
+  processNext() {
     if (!this.stopped) {
       const nextMsg = this.mailbox.shift();
       if (nextMsg) {
         this.handleMessage(nextMsg.message, nextMsg.sender);
       } else {
         this.busy = false;
-          // Counter is now ticking until actor is killed
+        // Counter is now ticking until actor is killed
         this.setTimeout();
       }
     }
   }
 
-  async handleFault (msg, sender, error, child = undefined) {
+  async handleFault(msg: any, sender, error, child = undefined) {
     const ctx = this.createSupervisionContext(msg, sender, error);
     const decision = await Promise.resolve(this.onCrash(msg, error, ctx, child));
     switch (decision) {
@@ -203,21 +230,21 @@ class Actor {
     }
   }
 
-  resume () {
+  resume() {
     this.processNext();
   }
 
-  createSupervisionContext (msg, sender, error) {
+  createSupervisionContext(msg, sender, error) {
     const ctx = this.createContextWithMailbox(this);
     return { ...ctx, ...SupervisionActions };
   }
 
-  createContextWithMailbox (sender) {
+  createContextWithMailbox(sender) {
     const ctx = this.createContext(sender);
     return { ...ctx, mailbox: this.mailbox.toArray() };
   }
 
-  createContext (sender) {
+  createContext(sender) {
     return {
       parent: this.parent ? this.parent.reference : undefined,
       path: this.path,
@@ -229,7 +256,7 @@ class Actor {
     };
   }
 
-  handleMessage (message, sender) {
+  handleMessage(message, sender) {
     this.busy = true;
     this.immediate = setImmediate(async () => {
       try {
@@ -245,12 +272,9 @@ class Actor {
   }
 }
 
-const spawn = (parent, f, name, properties) =>
+export const spawn = (parent, f, name, properties) =>
   systemMap.applyOrThrowIfStopped(parent, p => p.assertNotStopped() && new Actor(p, name, p.system, f, properties).reference);
 
-const spawnStateless = (parent, f, name, properties) =>
+export const spawnStateless = (parent, f, name, properties) =>
   spawn(parent, (state, msg, ctx) => f.call(ctx, msg, ctx), name, { ...properties, onCrash: (_, __, ctx) => ctx.resume });
 
-module.exports.spawn = spawn;
-module.exports.spawnStateless = spawnStateless;
-module.exports.Actor = Actor;

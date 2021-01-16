@@ -6,7 +6,7 @@ const id = x => x;
 const unit = x => { };
 
 class PersistentActor extends Actor {
-  constructor (parent, name, system, f, key, persistenceEngine, { snapshotEvery, snapshotEncoder = id, snapshotDecoder = id, encoder = id, decoder = id, ...properties } = {}) {
+  constructor(parent, name, system, f, key, persistenceEngine, { snapshotEvery, snapshotEncoder = id, snapshotDecoder = id, encoder = id, decoder = id, ...properties } = {}) {
     super(parent, name, system, f, properties);
     if (!key) {
       throw new Error('Persistence key required');
@@ -34,7 +34,7 @@ class PersistentActor extends Actor {
     this.immediate = setImmediate(() => this.recover());
   }
 
-  afterMessage () {
+  afterMessage() {
     if (this.messagesToNextSnapshot <= 0) {
       const snapshotState = this.snapshotEncoder(this.state);
       this.messagesToNextSnapshot = this.snapshotEvery;
@@ -45,7 +45,7 @@ class PersistentActor extends Actor {
     }
   }
 
-  async handleFaultedRecovery (msg, sender, error) {
+  async handleFaultedRecovery(msg, sender, error) {
     const ctx = this.createSupervisionContext(msg, sender, error);
     const decision = await Promise.resolve(this.onCrash(msg, error, ctx));
     switch (decision) {
@@ -72,7 +72,7 @@ class PersistentActor extends Actor {
     }
   }
 
-  async recover () {
+  async recover() {
     try {
       this.clearTimeout();
       // Create an observable sequence of events
@@ -122,7 +122,7 @@ class PersistentActor extends Actor {
     }
   }
 
-  reset () {
+  reset() {
     this.initializeState();
     this.busy = true;
     this.sequenceNumber = 0;
@@ -130,21 +130,20 @@ class PersistentActor extends Actor {
     this.immediate = setImmediate(() => this.recover());
   }
 
-  async persist (msg, tags = [], ...properties) {
+  async persist(msg, tags = [], ...properties) {
     --this.messagesToNextSnapshot;
     const persistedEvent = new PersistedEvent(this.encoder(msg), ++this.sequenceNumber, this.key, tags);
     await (this.persistenceEngine.persist(persistedEvent, ...properties));
   }
 
-  createContext () {
+  createContext() {
     return { ...super.createContext.apply(this, arguments), persist: this.persist.bind(this) };
   }
 }
 
-const spawnPersistent = (parent, f, key, name, properties) =>
+export const spawnPersistent = (parent, f, key, name, properties) =>
   applyOrThrowIfStopped(
     parent,
     p => (new PersistentActor(p, name, p.system, f, key, p.system.persistenceEngine, properties)).reference
   );
 
-module.exports.spawnPersistent = spawnPersistent;

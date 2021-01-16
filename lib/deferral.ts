@@ -1,5 +1,10 @@
-class Deferral {
-  constructor () {
+export class Deferral {
+  promise: Promise<unknown>;
+  reject!: (reason?: any) => void;
+  resolve!: (value: unknown) => void;
+  done: boolean;
+  constructor() {
+    this.done = false;
     this.promise = new Promise((resolve, reject) => {
       this.reject = reject;
       this.resolve = resolve;
@@ -9,4 +14,3 @@ class Deferral {
   }
 }
 
-module.exports.Deferral = Deferral;

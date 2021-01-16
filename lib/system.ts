@@ -1,18 +1,29 @@
-const { ActorSystemReference } = require('./references');
-const { ActorPath } = require('./paths');
+import { ActorReference, ActorSystemReference, TemporaryReference } from './references';
+import { ActorPath } from './paths';
 const assert = require('assert');
-const { stop } = require('./functions');
-const systemMap = require('./system-map');
+import { stop } from './functions';
+import systemMap from './system-map';
+import { Actor } from './actor';
+import { Deferral } from './deferral';
 
 const crypto = require('crypto');
-const toBase36 = x => Number(x).toString(36);
+const toBase36 = (x: unknown) => Number(x).toString(36);
 const generateSystemId = () => {
   const random = new Array(4).fill(0).map(_ => crypto.randomBytes(4).readUInt32BE()).map(toBase36);
   return random.join('-');
 };
 
-class ActorSystem {
-  constructor (extensions) {
+export class ActorSystem {
+  children: Map<string, Actor>;
+  createLogger: () => undefined;
+  name: string;
+  path: ActorPath;
+  reference: ActorSystemReference;
+  childReferences: Map<any, any>;
+  tempReferences: Map<any, any>;
+  stopped: boolean;
+  system: this;
+  constructor(extensions: [] | [{ name: string }, ...any]) {
     let [hd, ...tail] = extensions;
     this.children = new Map();
     this.createLogger = () => undefined;
@@ -28,15 +39,15 @@ class ActorSystem {
     ([...(typeof (hd) === 'function') ? [hd] : [], ...tail]).forEach(extension => extension(this));
   }
 
-  addTempReference (reference, deferral) {
+  addTempReference(reference: TemporaryReference, deferral: Deferral) {
     this.tempReferences.set(reference.id, deferral);
   }
 
-  removeTempReference (reference) {
+  removeTempReference(reference: TemporaryReference) {
     this.tempReferences.delete(reference.id);
   }
 
-  find (actorRef) {
+  find(actorRef: ActorReference) {
     switch (actorRef && actorRef.type) {
       case 'actor': {
         let parts =
@@ -60,28 +71,28 @@ class ActorSystem {
     }
   }
 
-  handleFault (msg, sender, error, child) {
+  handleFault(msg, sender, error, child) {
     console.log('Stopping top level actor,', child.name, 'due to a fault');
     stop(child);
   }
 
-  childStopped (child) {
+  childStopped(child: Actor) {
     this.children.delete(child.name);
     this.childReferences.delete(child.name);
   }
 
-  childSpawned (child) {
+  childSpawned(child: Actor) {
     this.childReferences.set(child.name, child.reference);
     this.children.set(child.name, child);
   }
 
-  stop () {
+  stop() {
     [...this.children.values()].forEach(stop);
     this.stopped = true;
     systemMap.remove(this.name);
   }
 
-  assertNotStopped () { assert(!this.stopped); return true; }
+  assertNotStopped() { assert(!this.stopped); return true; }
 }
 
 const start = function () { return new ActorSystem([...arguments]).reference; };
