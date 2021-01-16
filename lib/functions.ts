@@ -1,6 +1,6 @@
 import { ActorReference } from "./references";
 
-import systemMap from './system-map';
+import * as systemMap from './system-map';
 
 export const stop = (actor: ActorReference) => {
   let concreteActor = systemMap.find(actor.system.name, actor);
@@ -9,7 +9,7 @@ export const stop = (actor: ActorReference) => {
     concreteActor.stop();
 };
 
-export const query = (actor, msg, timeout) => {
+export const query = (actor: ActorReference, msg: any, timeout: number) => {
   if (!timeout) {
     throw new Error('A timeout is required to be specified');
   }
@@ -21,10 +21,10 @@ export const query = (actor, msg, timeout) => {
     : Promise.reject(new Error('Actor stopped or never existed. Query can never resolve'));
 };
 
-export const dispatch = (actor, msg, sender) => {
+export const dispatch = (actor: ActorReference, msg: any, DEPRECATED_sender?: unknown) => {
   let concreteActor = systemMap.find(actor.system.name, actor);
   concreteActor &&
     concreteActor.dispatch &&
-    concreteActor.dispatch(msg, sender);
+    concreteActor.dispatch(msg, DEPRECATED_sender);
 };
 

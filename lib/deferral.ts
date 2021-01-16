@@ -1,7 +1,7 @@
 export class Deferral {
   promise: Promise<unknown>;
   reject!: (reason?: any) => void;
-  resolve!: (value: unknown) => void;
+  resolve!: (value?: unknown) => void;
   done: boolean;
   constructor() {
     this.done = false;

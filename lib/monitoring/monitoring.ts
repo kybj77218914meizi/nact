@@ -1,6 +1,7 @@
-const { Nobody } = require('../references');
+import { ActorReference, Nobody } from '../references';
+import { dispatch } from '../functions';
 
-const LogLevel = {
+export const LogLevel = {
   OFF: 0,
   TRACE: 1,
   DEBUG: 2,
@@ -10,7 +11,7 @@ const LogLevel = {
   CRITICAL: 6
 };
 
-const logLevelAsText = [
+export const logLevelAsText = [
   'OFF',
   'TRACE',
   'DEBUG',
@@ -20,10 +21,17 @@ const logLevelAsText = [
   'CRITICAL'
 ];
 
-const logLevelToString = (level) => logLevelAsText[level];
+export const logLevelToString = (level: typeof LogLevel[keyof typeof LogLevel]) => logLevelAsText[level];
 
-class LogTrace {
-  constructor (level, message, actor, createdAt) {
+
+export class LogTrace {
+  type: 'trace';
+  properties: any;
+  actor: ActorReference;
+  createdAt: Date;
+  level: number;
+  message: string;
+  constructor(level: number, message: string, actor: ActorReference, createdAt: Date | undefined) {
     this.level = level;
     this.type = 'trace';
     this.message = message;
@@ -32,8 +40,13 @@ class LogTrace {
   }
 }
 
-class LogEvent {
-  constructor (name, eventProperties, actor, createdAt) {
+export class LogEvent {
+  type: 'event';
+  name: string;
+  properties: any;
+  actor: ActorReference;
+  createdAt: Date;
+  constructor(name: string, eventProperties: any, actor: ActorReference, createdAt: Date | undefined) {
     this.type = 'event';
     this.name = name;
     this.properties = eventProperties;
@@ -42,8 +55,14 @@ class LogEvent {
   }
 }
 
-class LogMetric {
-  constructor (name, values, actor, createdAt) {
+export class LogMetric {
+  type: 'metric';
+  properties: any;
+  actor: ActorReference;
+  createdAt: Date;
+  name: string;
+  values: any;
+  constructor(name: string, values: any, actor: ActorReference, createdAt: Date | undefined) {
     this.type = 'metric';
     this.name = name;
     this.values = values;
@@ -52,8 +71,12 @@ class LogMetric {
   }
 }
 
-class LogException {
-  constructor (exception, actor, createdAt) {
+export class LogException {
+  type: 'exception';
+  actor: ActorReference;
+  createdAt: Date;
+  exception: Error;
+  constructor(exception: Error, actor: ActorReference, createdAt: Date | undefined) {
     this.type = 'exception';
     this.exception = exception;
     this.actor = actor;
@@ -61,62 +84,52 @@ class LogException {
   }
 }
 
-const log = (facade, logEvent) => {
-  const { dispatch } = require('../functions');
+export const log = (facade: LoggingFacade, logEvent) => {
   dispatch(facade.loggingActor, logEvent, facade.reference);
 };
 
-class LoggingFacade {
-  constructor (loggingActor, reference) {
+export class LoggingFacade {
+  loggingActor: any;
+  reference: any;
+  constructor(loggingActor: ActorReference, reference: ActorReference) {
     this.loggingActor = loggingActor;
     this.reference = reference;
   }
 
-  trace (message) {
+  trace(message: string) {
     log(this, new LogTrace(LogLevel.TRACE, String(message), this.reference));
   }
 
-  debug (message) {
+  debug(message: string) {
     log(this, new LogTrace(LogLevel.DEBUG, String(message), this.reference));
   }
 
-  info (message) {
+  info(message: string) {
     log(this, new LogTrace(LogLevel.INFO, String(message), this.reference));
   }
 
-  warn (message) {
+  warn(message: string) {
     log(this, new LogTrace(LogLevel.WARN, String(message), this.reference));
   }
 
-  critical (message) {
+  critical(message: string) {
     log(this, new LogTrace(LogLevel.CRITICAL, String(message), this.reference));
   }
 
-  error (message) {
+  error(message: string) {
     log(this, new LogTrace(LogLevel.ERROR, String(message), this.reference));
   }
 
-  event (name, eventProperties) {
+  event(name: string, eventProperties: any) {
     log(this, new LogEvent(String(name), eventProperties, this.reference));
   }
-  exception (exception) {
+  exception(exception: Error) {
     log(this, new LogException(exception, this.reference));
   }
 
-  metric (name, values) {
+  metric(name: string, values: any) {
     log(this, new LogMetric(String(name), values, this.reference));
   }
 }
 
-const logNothing = () => new Nobody();
-
-module.exports = {
-  LogLevel,
-  logLevelToString,
-  LogEvent,
-  LogTrace,
-  LogMetric,
-  LogException,
-  LoggingFacade,
-  logNothing
-};
+export const logNothing = () => new Nobody();

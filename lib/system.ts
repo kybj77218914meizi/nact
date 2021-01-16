@@ -1,26 +1,25 @@
 import { ActorReference, ActorSystemReference, TemporaryReference } from './references';
 import { ActorPath } from './paths';
-const assert = require('assert');
+import assert from './assert';
 import { stop } from './functions';
-import systemMap from './system-map';
+import * as systemMap from './system-map';
 import { Actor } from './actor';
 import { Deferral } from './deferral';
+import { LoggingFacade } from './monitoring';
 
-const crypto = require('crypto');
-const toBase36 = (x: unknown) => Number(x).toString(36);
+const toBase36 = (x: number) => Number(x).toString(36);
 const generateSystemId = () => {
-  const random = new Array(4).fill(0).map(_ => crypto.randomBytes(4).readUInt32BE()).map(toBase36);
-  return random.join('-');
+  return [...crypto.getRandomValues(new Uint32Array(4))].map(toBase36).join('-');
 };
 
 export class ActorSystem {
   children: Map<string, Actor>;
-  createLogger: () => undefined;
+  createLogger: (reference: ActorReference) => LoggingFacade | undefined;
   name: string;
   path: ActorPath;
   reference: ActorSystemReference;
   childReferences: Map<any, any>;
-  tempReferences: Map<any, any>;
+  tempReferences: Map<number, Deferral>;
   stopped: boolean;
   system: this;
   constructor(extensions: [] | [{ name: string }, ...any]) {
@@ -47,31 +46,32 @@ export class ActorSystem {
     this.tempReferences.delete(reference.id);
   }
 
-  find(actorRef: ActorReference) {
-    switch (actorRef && actorRef.type) {
-      case 'actor': {
+  find(actorRef: ActorSystemReference | ActorReference | TemporaryReference): undefined | ActorSystem | Actor | { dispatch: (...args: any[]) => void } {
+    if (!actorRef) {
+      return undefined;
+    }
+    switch (actorRef.type) {
+      case 'actor':
         let parts =
           actorRef &&
           actorRef.path &&
           actorRef.path.parts;
 
-        return parts && parts.reduce((parent, current) =>
+        return parts && parts.reduce((parent: ActorSystem | Actor | undefined, current: string) =>
           parent &&
           parent.children.get(current),
           this
         );
-      }
-      case 'temp': {
+
+      case 'temp':
         const actor = this.tempReferences.get(actorRef.id);
-        return actor && actor.resolve && { dispatch: (...args) => actor.resolve(...args) };
-      }
+        return actor && actor.resolve && { dispatch: (...args: any[]) => actor.resolve(...args) };
       case 'system':
         return this;
-      default: return undefined;
     }
   }
 
-  handleFault(msg, sender, error, child) {
+  handleFault(_msg: any, _sender: ActorReference | TemporaryReference, _error: Error, child: ActorReference) {
     console.log('Stopping top level actor,', child.name, 'due to a fault');
     stop(child);
   }
@@ -87,7 +87,7 @@ export class ActorSystem {
   }
 
   stop() {
-    [...this.children.values()].forEach(stop);
+    [...this.children.values()].forEach(x => stop(x.reference));
     this.stopped = true;
     systemMap.remove(this.name);
   }
@@ -95,6 +95,5 @@ export class ActorSystem {
   assertNotStopped() { assert(!this.stopped); return true; }
 }
 
-const start = function () { return new ActorSystem([...arguments]).reference; };
+export const start = function () { return new ActorSystem([...arguments]).reference; };
 
-module.exports = { start };

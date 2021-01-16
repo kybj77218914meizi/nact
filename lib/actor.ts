@@ -3,13 +3,13 @@ import { clearImmediate, setImmediate } from "./immediate";
 import { ActorPath } from "./paths";
 import { ActorSystem } from "./system";
 
-const { Deferral } = require('./deferral');
-const systemMap = require('./system-map');
-const { ActorReference, TemporaryReference, Nobody } = require('./references');
-const Queue = require('denque');
-const assert = require('assert');
-const { stop } = require('./functions');
-const { defaultSupervisionPolicy, SupervisionActions } = require('./supervision');
+import { Deferral } from './deferral';
+import * as systemMap from './system-map';
+import { ActorReference, TemporaryReference, Nobody } from './references';
+import Queue from 'denque';
+import assert from './assert';
+import { stop } from './functions';
+import { defaultSupervisionPolicy, SupervisionActions } from './supervision';
 
 const unit = () => { };
 
@@ -24,10 +24,10 @@ export class Actor {
   f: any;
   stopped: boolean;
   children: Map<string, Actor>;
-  childReferences: Map<any, any>;
+  childReferences: Map<string, ActorReference>;
   busy: boolean;
   mailbox: Denque<any>;
-  immediate: undefined;
+  immediate: number | undefined;
   onCrash: any;
   initialState: any;
   initialStateFunc: any;
@@ -113,7 +113,7 @@ export class Actor {
   assertNotStopped() { assert(!this.stopped); return true; }
   afterMessage() { }
 
-  dispatch(message, sender = new Nobody()) {
+  dispatch(message: any, sender = new Nobody()) {
     this.assertNotStopped();
     this.clearTimeout();
     if (!this.busy) {
@@ -182,7 +182,7 @@ export class Actor {
     }
   }
 
-  async handleFault(msg: any, sender, error, child = undefined) {
+  async handleFault(msg: any, sender: ActorReference | TemporaryReference, error: Error, child: Actor | undefined = undefined) {
     const ctx = this.createSupervisionContext(msg, sender, error);
     const decision = await Promise.resolve(this.onCrash(msg, error, ctx, child));
     switch (decision) {
@@ -196,7 +196,7 @@ export class Actor {
         break;
       // Stop Child
       case SupervisionActions.stopChild:
-        this.children.get(child.name).stop();
+        this.children.get(child!.name)?.stop();
         break;
       // Stop All Children
       case SupervisionActions.stopAllChildren:
@@ -216,7 +216,7 @@ export class Actor {
         break;
       // Reset Child
       case SupervisionActions.resetChild:
-        this.children.get(child.name).reset();
+        this.children.get(child!.name)?.reset();
         break;
       // Reset all Children
       case SupervisionActions.resetAllChildren:
@@ -244,7 +244,7 @@ export class Actor {
     return { ...ctx, mailbox: this.mailbox.toArray() };
   }
 
-  createContext(sender) {
+  createContext(sender: TemporaryReference | ActorReference) {
     return {
       parent: this.parent ? this.parent.reference : undefined,
       path: this.path,
@@ -256,7 +256,7 @@ export class Actor {
     };
   }
 
-  handleMessage(message, sender) {
+  handleMessage(message: any, sender: TemporaryReference | ActorReference) {
     this.busy = true;
     this.immediate = setImmediate(async () => {
       try {
@@ -272,9 +272,9 @@ export class Actor {
   }
 }
 
-export const spawn = (parent, f, name, properties) =>
-  systemMap.applyOrThrowIfStopped(parent, p => p.assertNotStopped() && new Actor(p, name, p.system, f, properties).reference);
+export const spawn = (parent: ActorSystemReference | ActorReference, f: (state: any, msg: any, ctx: any) => any, name: string | undefined, properties: {} | undefined) =>
+  systemMap.applyOrThrowIfStopped(parent, (p: Actor | ActorSystem) => p.assertNotStopped() && new Actor(p, name, p.system, f, properties).reference);
 
-export const spawnStateless = (parent, f, name, properties) =>
-  spawn(parent, (state, msg, ctx) => f.call(ctx, msg, ctx), name, { ...properties, onCrash: (_, __, ctx) => ctx.resume });
+export const spawnStateless = (parent: ActorReference | ActorSystemReference, f: { (log: any, ctx: any): void; call?: any; }, name?: string, properties?: undefined) =>
+  spawn(parent, (state, msg, ctx) => f.call(ctx, msg, ctx), name, { ...(properties || {}), onCrash: (_, __, ctx) => ctx.resume });
 

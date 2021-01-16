@@ -1,4 +1,7 @@
-const {
+import { ActorReference } from '../references';
+import { ActorSystem } from '../system';
+
+export {
   LogLevel,
   LogEvent,
   LogException,
@@ -6,26 +9,16 @@ const {
   LogTrace,
   LoggingFacade,
   logNothing
-} = require('./monitoring');
-const { logToConsole } = require('./console-engine');
+} from './monitoring';
 
-const configureLogging = (engine) => (system) => {
+export { logToConsole } from './console-engine';
+import { LoggingFacade } from './monitoring';
+
+export const configureLogging = (engine: (system: ActorSystem) => ActorReference) => (system: ActorSystem) => {
   const loggingActor = engine(system.reference);
   if (loggingActor) {
     system.createLogger = (reference) => new LoggingFacade(loggingActor, reference);
   } else {
     throw new Error('Logging engine is not defined');
   }
-};
-
-module.exports = {
-  LogLevel,
-  LogTrace,
-  LogMetric,
-  LogException,
-  LogEvent,
-  logNothing,
-  LoggingFacade,
-  logToConsole,
-  configureLogging
 };
